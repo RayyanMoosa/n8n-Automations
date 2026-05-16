@@ -1,0 +1,225 @@
+{
+  "name": "Overdue Invoice Reminder Call Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "5010322f-7225-4a39-b0fa-c94cdc5da75f",
+      "name": "Daily Invoice Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        1808,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "overdueThresholdDays",
+              "value": 7,
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "e393184a-434c-49fe-b89a-eb12ecc8d4ec",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2032,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "151ETbkFa-ZZco-M1UEBaomlK7_d62yC3YWfKC8fRUTg",
+          "mode": "list",
+          "cachedResultName": "Mock Invoices",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/151ETbkFa-ZZco-M1UEBaomlK7_d62yC3YWfKC8fRUTg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/151ETbkFa-ZZco-M1UEBaomlK7_d62yC3YWfKC8fRUTg/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "19da4692-e9bf-4ca8-b6a1-72771eab56e7",
+      "name": "Get Invoice Data",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2256,
+        112
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "M83KAohRjt9rkWZ8",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get threshold days from Workflow Configuration node\nconst thresholdDays = $('Workflow Configuration').item.json.overdueThresholdDays || 7;\n\n// Calculate the date threshold (7 days ago from today)\nconst today = new Date();\nconst thresholdDate = new Date(today);\nthresholdDate.setDate(today.getDate() - thresholdDays);\n\n// Get all items from the previous node\nconst items = $input.all();\n\n// Filter items where invoice is overdue and not paid\nconst overdueInvoices = items.filter(item => {\n  const invoiceData = item.json;\n  \n  // Get the invoice sent date using correct column name\n  const sentDate = new Date(invoiceData.SentDate);\n  \n  // Get the status using correct column name\n  const status = (invoiceData.Status || '').toLowerCase();\n  \n  // Check if invoice is overdue (sent more than threshold days ago) and not paid\n  const isOverdue = sentDate < thresholdDate;\n  const isNotPaid = status !== 'paid';\n  \n  return isOverdue && isNotPaid;\n});\n\n// Return the filtered overdue invoices\nreturn overdueInvoices;"
+      },
+      "id": "7aaac5f3-6eb3-4492-a79a-573ee6e1d175",
+      "name": "Filter Overdue Invoices",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f93d158b-d1e7-4a32-9107-3f7cfa798edd",
+      "name": "Check If Overdue Invoices Exist",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2704,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.retellai.com/v2/create-phone-call",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"from_number\": \"+\",\n  \"to_number\": \"+{{ $json['Phone Number'] }}\",\n  \"override_agent_id\": \"agent_8a40f9e1f678e3b10e3d2ebc19\",\n  \"override_agent_version\": 1,\n  \"agent_override\": {\n    \"agent\": {\n      \"pii_config\": {\n        \"mode\": \"post_call\",\n        \"categories\": []\n      }\n    }\n  },\n  \"metadata\": {},\n  \"retell_llm_dynamic_variables\": {\n    \"customer_name\": \"{{ $json.Client }}\",\n    \"invoice_number\": \"{{ $json.InvoiceID }}\",\n    \"invoice_amount\": \"{{ $json.Amount }}\",\n    \"days_overdue\": \"{{ $('Workflow Configuration').item.json.overdueThresholdDays }}\"\n\n  },\n  \"custom_sip_headers\": {\n    \"X-Custom-Header\": \"Custom Value\"\n  },\n  \"ignore_e164_validation\": true\n}",
+        "options": {}
+      },
+      "id": "beef9dde-248c-4053-964c-3543f197320f",
+      "name": "Send Reminder Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2928,
+        112
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "4bmBVJQZUYJli3qu",
+          "name": "Inflate Basic Auth"
+        },
+        "httpBearerAuth": {
+          "id": "Vk2Yp9VrjPUyKOXI",
+          "name": "Retell AI"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Daily Invoice Check": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Get Invoice Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Invoice Data": {
+      "main": [
+        [
+          {
+            "node": "Filter Overdue Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Overdue Invoices": {
+      "main": [
+        [
+          {
+            "node": "Check If Overdue Invoices Exist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Overdue Invoices Exist": {
+      "main": [
+        [
+          {
+            "node": "Send Reminder Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f8fbe0b5-0f8c-4964-bc6d-39f5d9ce0239",
+  "meta": {
+    "instanceId": "3ff4d44d7ea4165acd4a0d0e24f118641ea7ce322761eb81e811678253130002"
+  },
+  "id": "RbuN3oNBgHwuhJYZ",
+  "tags": []
+}

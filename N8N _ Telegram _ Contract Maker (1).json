@@ -1,0 +1,873 @@
+{
+  "name": "N8N / Telegram / Contract Maker",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=# Role\n\nYou are an AI assistant that supports filling in contract PDF files by collecting required information from the user.\n\n# Context\n\nYou must guide the user to provide all mandatory fields before producing a finalized PDF contract.\n\n# Task\n\nBegin by asking the user what information they’d like to provide. Based on their responses, follow this workflow:\n\n## Workflow\n\n1. **Check for completeness**\n\n   * After every user message, check if all four required fields have been provided.\n   * If any are missing, continue asking for the missing details until all are fulfilled by using the Telegram tool.\n\n2. **Fulfillment status**\n\n   * Only once all four required fields are present, set `data_fulfilled = true`.\n   * If not, keep `data_fulfilled = false` and use the Telegram tool to confirm missing fields.\n\n## Required Information\n\nThe contract cannot be completed unless the user provides all of the following:\n\n* **Cost** (example: “Monthly retainer fee of fifteen thousand dollars plus performance bonuses based on lead generation”)\n* **Effective date**\n* **Timeline** (example: “Project to be completed within three months from the effective date”)\n* **Project description** or ** Services**. \n  - If the description is too short or too vague, simply add more details about the services yourself based on the user's sharing. Please write 3-4 sentences for this project description. \n\n# Rules to Follow\n\n* Keep responses concise: three to five sentences.\n* Use everyday, conversational language.\n* Always confirm back details for accuracy before finalizing.\n* Never assume missing information; always ask the user.\n* Do not invent or fill in placeholder details without explicit user input.\n* Always mark `data_fulfilled = false` until **all four** required fields are provided.\n\n# Input\n\nUser message:\n\n```json\n{{ $json.message.text }}\n```\n",
+        "hasOutputParser": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1088,
+        608
+      ],
+      "id": "54f5f648-b9d5-4306-a8b7-13937c3a34b2",
+      "name": "AI Agent",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-4.1",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        1024,
+        832
+      ],
+      "id": "a725d171-e1b8-4599-a5e2-6cf265d7d4f5",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "wsYZhkwRHINCc6h3",
+          "name": "OpenRouter"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1CVzTFq0MtvznOG4ll7GiMgpreAgjjE2C",
+          "mode": "list",
+          "cachedResultName": "contract-template.pdf",
+          "cachedResultUrl": "https://drive.google.com/file/d/1CVzTFq0MtvznOG4ll7GiMgpreAgjjE2C/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1072,
+        192
+      ],
+      "id": "a10cb7c9-ffaf-449f-970e-0c8e63c5882d",
+      "name": "Download file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "MM2gRWS6Ui96OC8x",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        816,
+        192
+      ],
+      "id": "898a99d2-ab4e-449f-953a-b2ad2d048919",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "operation": "binaryToPropery",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        192
+      ],
+      "id": "324c719a-cdcd-45c7-a712-8cdbe9fb55aa",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openRouterApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"anthropic/claude-sonnet-4\",\n  \"plugins\": [\n    {\n      \"id\": \"file-parser\",\n      \"pdf\": { \"engine\": \"native\" }\n    }\n  ],\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        { \n          \"type\": \"text\",\n          \"text\": \"Convert the PDF file to HTML with the exact styles (without page number if present). Return the HTML content only\"\n        },\n        {\n          \"type\": \"file\",\n          \"file\": {\n            \"filename\": \"document.pdf\",\n            \"file_data\": \"{{ 'data:application/pdf;base64,' + $json.data }}\"\n          }\n        }\n      ]\n    }\n  ]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1616,
+        192
+      ],
+      "id": "2b98b7a0-44e9-4107-828d-bf89700f9301",
+      "name": "OpenRouter Claude 4",
+      "retryOnFail": false,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "openRouterApi": {
+          "id": "wsYZhkwRHINCc6h3",
+          "name": "OpenRouter"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "name": "={{ $('Download file').item.binary.data.fileName.replace('.pdf', '.html') }}",
+        "driveId": {
+          "__rl": true,
+          "value": "0ADlyun92V9Z2Uk9PVA",
+          "mode": "list",
+          "cachedResultName": "Brendan - YouTube",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/0ADlyun92V9Z2Uk9PVA"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1Oea_HGL0_BX3U8zatOyPHel4sKOGMWZI",
+          "mode": "list",
+          "cachedResultName": "N8N/Telegram - Contract Maker",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1Oea_HGL0_BX3U8zatOyPHel4sKOGMWZI"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2432,
+        192
+      ],
+      "id": "04b1f12d-6ff9-4d60-b769-c496d5a46659",
+      "name": "Upload file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "MM2gRWS6Ui96OC8x",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "html": "{{ $json.choices[0].message.content.replace('```html', '').replace('```', '') }}"
+      },
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [
+        1888,
+        192
+      ],
+      "id": "39866e75-ac19-469e-85c2-bfec9e35ed5e",
+      "name": "HTML"
+    },
+    {
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "html",
+        "options": {
+          "dataIsBase64": false,
+          "fileName": "index.html",
+          "mimeType": "text/html"
+        }
+      },
+      "id": "618cfb55-a298-4beb-891b-85033f13ed33",
+      "name": "Convert to File",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1,
+      "position": [
+        2160,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Download PDF file and convert to HTML\n**Double click** to edit me. [Guide](https://docs.n8n.io/workflows/sticky-notes/)",
+        "height": 448,
+        "width": 1984
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        736,
+        16
+      ],
+      "id": "1197af13-71e1-45eb-bcdc-8aef6c086a25",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "52b7c329-9fb9-4d6c-86d6-0fe1e926d1c8",
+              "leftValue": "={{ $json.output.data_fulfilled }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1440,
+        608
+      ],
+      "id": "6261b8bf-f3a5-43f0-8395-c14ec862dc49",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"data_fulfilled\": {\n      \"type\": \"boolean\",\n      \"description\": \"Whether the data has been fulfilled or not.\"\n    },\n    \"cost\": {\n      \"type\": \"string\",\n      \"description\": \"The project cost, expressed as a string (e.g., '2000$').\"\n    },\n    \"timeline\": {\n      \"type\": \"string\",\n      \"description\": \"The timeline of the project, a range or specific milestone.\"\n    },\n    \"effective_date\": {\n      \"type\": \"string\",\n      \"description\": \"The date the contract will be affected.\"\n    },\n    \"services\": {\n      \"type\": \"string\",\n      \"description\": \"A human-readable description, or main services of the project.\"\n    }\n  }\n}\n",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1296,
+        832
+      ],
+      "id": "bcba4ff4-01e2-4418-8897-80468b657810",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f7ef7ad5-9909-40aa-afb0-3db62d656eb4",
+              "name": "=base_information",
+              "value": "={\"effective_date\":\"{{new Date().toISOString().substring(0, 10);}}\",\"principal\":{\"name\":\"Brendan Jowett\",\"address\":\"123 High Street, London, UK\"},\"agent\":{\"name\":\"Inflate Agency\",\"address\":\"456 Market Road, Manchester, UK\"},\"services\":[\"Digital marketing strategy development\",\"Social media campaign management\",\"Content creation and copywriting\",\"Search engine optimization (SEO)\",\"Monthly analytics reporting\"],\"compensation\":{\"amount\":\"£5,000 per month\",\"invoice_day\":\"1st of every month\",\"payment_method\":\"Bank Transfer\",\"payment_address\":\"Bank of England, Account No: 12345678, Sort Code: 00-00-00\"},\"term\":\"12 months from the Effective Date\",\"governing_law\":\"Laws of England and Wales\"}",
+              "type": "string"
+            },
+            {
+              "id": "38c5182d-aac8-42f1-808c-f00979cf20bb",
+              "name": "overwritten_information",
+              "value": "={{ $('AI Agent').item.json.output.toJsonString() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2560,
+        592
+      ],
+      "id": "48bb06e7-ba9b-45f8-96ac-192ab315bd3f",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "1L_WisYAdEhOYUgxsRUFstDFF-Lf7gNJd",
+          "mode": "list",
+          "cachedResultName": "contract-template.html",
+          "cachedResultUrl": "https://drive.google.com/file/d/1L_WisYAdEhOYUgxsRUFstDFF-Lf7gNJd/view?usp=drivesdk"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1968,
+        592
+      ],
+      "id": "8fad0c7f-19a2-4441-9520-e4f3548ea8a4",
+      "name": "Download file1",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "MM2gRWS6Ui96OC8x",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        2256,
+        592
+      ],
+      "id": "c311558c-6cd5-4d75-b390-54f46b4618b7",
+      "name": "Extract from File1"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.message.chat.id }}",
+        "text": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Text', ``, 'string') }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegramTool",
+      "typeVersion": 1.2,
+      "position": [
+        1184,
+        1008
+      ],
+      "id": "961f5e3d-3ef7-47b9-8452-271bca618487",
+      "name": "Send a text message in Telegram",
+      "webhookId": "d37861ad-addb-486d-b30f-ba6890925bca",
+      "credentials": {
+        "telegramApi": {
+          "id": "4xUpGAS3nXkfaavz",
+          "name": "[Logan] Contract Maker Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        832,
+        608
+      ],
+      "id": "9f278c4e-9d8d-4793-bdfb-3603afe338bc",
+      "name": "Telegram Trigger1",
+      "webhookId": "1283e428-795b-4306-ae8c-85ea1c35ade5",
+      "credentials": {
+        "telegramApi": {
+          "id": "4xUpGAS3nXkfaavz",
+          "name": "[Logan] Contract Maker Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        1392,
+        1008
+      ],
+      "id": "9384b51c-0f46-48c1-b7e0-4f2d9929e493",
+      "name": "OpenRouter Chat Model1",
+      "credentials": {
+        "openRouterApi": {
+          "id": "wsYZhkwRHINCc6h3",
+          "name": "OpenRouter"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.message.from.id }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1136,
+        832
+      ],
+      "id": "be902929-99ad-4598-9e35-601918198a62",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "operation": "sendDocument",
+        "chatId": "={{ $('Telegram Trigger1').item.json.message.chat.id }}",
+        "binaryData": true,
+        "additionalFields": {
+          "fileName": "contract.pdf"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3920,
+        592
+      ],
+      "id": "30f0b4fd-e60e-4059-9545-b7eeb3a19c2d",
+      "name": "Send a document",
+      "webhookId": "7d2c9595-5a89-4ef8-9777-53428c3e88f5",
+      "credentials": {
+        "telegramApi": {
+          "id": "4xUpGAS3nXkfaavz",
+          "name": "[Logan] Contract Maker Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "html": "{{ $json.choices[0].message.content.replace('```html', '').replace('```', '') }}"
+      },
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [
+        3088,
+        592
+      ],
+      "id": "d5fc6503-8e78-470d-9b6f-ca0c38da5e12",
+      "name": "HTML1"
+    },
+    {
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "html",
+        "options": {
+          "dataIsBase64": false,
+          "fileName": "index.html",
+          "mimeType": "text/html"
+        }
+      },
+      "id": "281dcfb1-9587-470f-81aa-e7777dd694b6",
+      "name": "Convert to File1",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1,
+      "position": [
+        3360,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger1').item.json.message.chat.id }}",
+        "text": "I'm generating the contract, please wait a minute...",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1696,
+        592
+      ],
+      "id": "4f873eba-d56c-4a2a-b9fe-e4b4feefc56f",
+      "name": "Send a text message",
+      "webhookId": "80a2bf7f-b7a7-4cde-8194-5d8a1781a1a1",
+      "credentials": {
+        "telegramApi": {
+          "id": "4xUpGAS3nXkfaavz",
+          "name": "[Logan] Contract Maker Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://v2.convertapi.com/convert/html/to/pdf",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/octet-stream"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "Scale",
+              "value": "200"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "f28e5881-a24c-4d6b-afb7-6ae2551f243e",
+      "name": "Convert File to PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        3648,
+        592
+      ],
+      "notesInFlow": true,
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "W4QtUBaYlFQGAVdA",
+          "name": "[Logan] ConvertAPI"
+        },
+        "httpBearerAuth": {
+          "id": "7ZTeYZmjAZEB7PH9",
+          "name": "[Logan] ConvertAPI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Chat and Generate the contract\n**Double click** to edit me. [Guide](https://docs.n8n.io/workflows/sticky-notes/)",
+        "height": 704,
+        "width": 3424,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        736,
+        496
+      ],
+      "id": "192d0d20-d586-4f55-bf82-c12bf558108d",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openRouterApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"google/gemini-2.5-pro\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": [\n        { \n          \"type\": \"text\",\n          \"text\": \"Fill the data into the HTML template, without changing styles, only fill the data into empty inputs. Replace the base data with the overwritten data in the proper places. Always leave the Entire Agreement section empty as is, and for the Services section, each service will be put into a single line, don't leave any line empty. Return the HTML content only.\"\n        }\n      ]\n    },\n    {\n      \"role\": \"user\",\n      \"content\": [\n        { \n          \"type\": \"text\",\n          \"text\": {{ (\"Base data: \" + $json.base_information + \"Overwritten data: \" + $json.overwritten_information).toJsonString() }}\n        },\n        {\n          \"type\": \"text\",\n          \"text\": {{ $('Extract from File1').item.json.data.toJsonString() }}\n        }\n      ]\n    }\n  ]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2832,
+        592
+      ],
+      "id": "2d70e4af-ef74-408b-870b-f6a9da196089",
+      "name": "OpenRouter Google",
+      "retryOnFail": false,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "openRouterApi": {
+          "id": "wsYZhkwRHINCc6h3",
+          "name": "OpenRouter"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {
+    "Telegram Trigger1": [
+      {
+        "json": {
+          "update_id": 217602815,
+          "message": {
+            "message_id": 52,
+            "from": {
+              "id": 1436414928,
+              "is_bot": false,
+              "first_name": "Sang",
+              "last_name": "Huynh",
+              "username": "sanghuynhthanhh",
+              "language_code": "en"
+            },
+            "chat": {
+              "id": 1436414928,
+              "first_name": "Sang",
+              "last_name": "Huynh",
+              "username": "sanghuynhthanhh",
+              "type": "private"
+            },
+            "date": 1759050475,
+            "text": "It costs 2000$, from November 1st, and will be effective in a year, the project is about an ecommerce platform with all in one solution like POS, OM, and Storefront."
+          }
+        }
+      }
+    ]
+  },
+  "connections": {
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Download file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "OpenRouter Claude 4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Claude 4": {
+      "main": [
+        [
+          {
+            "node": "HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Upload file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "OpenRouter Google",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file1": {
+      "main": [
+        [
+          {
+            "node": "Extract from File1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File1": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message in Telegram": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Structured Output Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML1": {
+      "main": [
+        [
+          {
+            "node": "Convert to File1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File1": {
+      "main": [
+        [
+          {
+            "node": "Convert File to PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message": {
+      "main": [
+        [
+          {
+            "node": "Download file1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert File to PDF": {
+      "main": [
+        [
+          {
+            "node": "Send a document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Google": {
+      "main": [
+        [
+          {
+            "node": "HTML1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "0401f8bc-39db-49ca-b0d5-d6f8da242cee",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "3ff4d44d7ea4165acd4a0d0e24f118641ea7ce322761eb81e811678253130002"
+  },
+  "id": "pdE0qhen5l1cwrrn",
+  "tags": []
+}
